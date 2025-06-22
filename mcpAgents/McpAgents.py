@@ -12,7 +12,13 @@ from typing import Optional
 load_dotenv()
 setup_logging(output_dir=os.getenv("BASE_DIR_PATH"),filename="agent.log")
 
-class DesicionResponse(BaseModel):
+# Configuration
+endpoint = os.getenv("DH_ENDPOINT")
+model_name = "gpt-4o"
+deployment = "gpt-4o"
+api_version = "2024-12-01-preview"
+
+class DecisionResponse(BaseModel):
     hire: str = Field(...,description="Answer in Yes for hiring or No for not hiring")
     reason: Optional[str] = Field(...,description="Give some 2-3 reasons why the decision was made")
 
@@ -29,7 +35,7 @@ def make_decision_to_hire(requirements:str,candidate:ResumeChecklist):
             {"role":"system","content":system_prompt},
             {"role":"user","content":f"Make a hiring decision for the following candidate\n ### Job Requirements: {requirements}\n ### Candidate Data: {candidate}"}
         ],
-        response_format=DesicionResponse
+        response_format=DecisionResponse
     )
     return response.choices[0].message.parsed
 
@@ -46,19 +52,19 @@ async def extract_resume_details(input:str,agent:Agent):
         return None
 
 async def main():
-    tools_server = MCPServerSse({"url":"http://localhost:8000/mcp-test"},client_session_timeout_seconds=15.0)
+    tools_server = MCPServerSse({"url":"http://localhost:8000/mcp-test"},client_session_timeout_seconds=20.0)
     try:
-        azure_async_client = AsyncAzureOpenAI(
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION")
+        client = AsyncAzureOpenAI(
+            api_version=api_version,
+            azure_endpoint=endpoint,
+            api_key=os.getenv("DH_API_KEY")
         )
         await tools_server.connect()
         agent = Agent(
             name="HR Assistant",
             model=OpenAIChatCompletionsModel(
                 model=azure_openai_model,
-                openai_client=azure_async_client
+                client=client
             ),
             instructions="You are an HR assistant that analyzes resumes. You have a tool to parse resumes for details.",
             mcp_servers=[tools_server]
