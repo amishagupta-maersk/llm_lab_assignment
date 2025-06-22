@@ -1,90 +1,123 @@
 import os
 import asyncio
-from openai import AsyncAzureOpenAI, AzureOpenAI
-from agents import Agent,Runner,OpenAIChatCompletionsModel
-from agents.mcp import MCPServerSse
-from dotenv import load_dotenv
-from pydantic import BaseModel,Field
 from typing import Optional
+
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+from openai import AzureOpenAI, AsyncAzureOpenAI
+
+from agents import Agent, Runner, OpenAIChatCompletionsModel
+from agents.mcp import MCPServerSse
 from unstructuredChecklist.ResumeChecklist import ResumeChecklist
 
+# Load environment variables from .env file
 load_dotenv()
 
-# Configuration
-endpoint = os.getenv("DH_ENDPOINT")
-model_name = "gpt-4o"
-deployment = "gpt-4o"
-api_version = "2024-12-01-preview"
+# API configuration settings
+AZURE_ENDPOINT = os.getenv("DH_ENDPOINT")
+AZURE_API_KEY = os.getenv("DH_API_KEY")
+MODEL_NAME = "gpt-4o"
+DEPLOYMENT_NAME = "gpt-4o"
+API_VERSION = "2024-12-01-preview"
 
-client = AzureOpenAI(
-    api_version=api_version,
-    azure_endpoint=endpoint,
-    api_key=os.getenv("DH_API_KEY")
+# Synchronous client for hiring decision
+sync_openai_client = AzureOpenAI(
+    api_version=API_VERSION,
+    azure_endpoint=AZURE_ENDPOINT,
+    api_key=AZURE_API_KEY
 )
 
-class DecisionResponse(BaseModel):
-    hire: str = Field(...,description="Answer in Yes for hiring or No for not hiring")
-    reason: Optional[str] = Field(...,description="Give some 2-3 reasons why the decision was made")
 
-def make_decision_to_hire(requirements:str,candidate:ResumeChecklist):
-    system_prompt = """
-        You are a HR assistant that helps in making hiring decisions. Your role is to provide a yes or no response for hiring a candidate based on the requirement that is provided.
-        Check if the candidate meets the required specification and then give the decision.
-        Do not hallucinate the skills of the candidate or any other information of the candidate.(Especially when some inputs are missing!)
-        Give concise and remain clear on the intent while giving the decision for hire.
+# Pydantic model to validate structured decision response
+class HiringDecision(BaseModel):
+    hire: str = Field(..., description="Provide 'Yes' if the candidate should be hired, else 'No'")
+    reason: Optional[str] = Field(..., description="Give 2–3 concise reasons supporting your decision")
+
+
+def evaluate_candidate(job_description: str, applicant_data: ResumeChecklist):
+    """Send a prompt to the model to decide whether to hire the candidate based on the job requirements."""
+    system_instruction = """
+        You are a hiring assistant tasked with evaluating candidates based on job descriptions.
+        Only respond with 'Yes' or 'No' for hiring and back your answer with a brief explanation.
+        Do not make up information if any details are missing.
+        Be precise and base your judgment on the provided data alone.
     """
-    response =client.chat.completions.create(
-        model=deployment,
-        messages=[
-            {"role":"system","content":system_prompt},
-            {"role":"user","content":f"Make a hiring decision for the following candidate\n ### Job Requirements: {requirements}\n ### Candidate Data: {candidate}"}
-        ],
-        response_format=DecisionResponse
-    )
-    return response.choices[0].message.parsed
 
-async def extract_resume_details(input:str,agent:Agent):
+    completion = sync_openai_client.chat.completions.create(
+        model=DEPLOYMENT_NAME,
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user",
+             "content": f"Evaluate this candidate:\n--- Job Description: {job_description}\n--- Candidate Info: {applicant_data}"}
+        ],
+        response_format=HiringDecision
+    )
+
+    return completion.choices[0].message.parsed
+
+
+async def parse_resume(text_input: str, hr_agent: Agent):
+    """Uses the agent to extract structured information from free-form resume text."""
     try:
-        result = await Runner.run(agent,input)
-        if hasattr(result,'final_output'):
-            print("result : ", result.final_output)
-            return result.final_output
+        parsed_result = await Runner.run(hr_agent, text_input)
+        if hasattr(parsed_result, 'final_output'):
+            print("Parsed Candidate Summary:", parsed_result.final_output)
+            return parsed_result.final_output
         else:
-            raise AttributeError("The response object does not have a final_output attribute")
-    except Exception as e:
-        print(f"Error in extracting resume deatils: {e}")
+            raise ValueError("Missing 'final_output' in agent response.")
+    except Exception as err:
+        print(f"Resume parsing error: {err}")
         return None
 
-async def main():
-    tools_server = MCPServerSse({"url":"http://localhost:8000/mcp-test"},client_session_timeout_seconds=20.0)
+
+async def run_hiring_assistant():
+    """Main coroutine to handle resume parsing and hiring decision logic."""
+    mcp_server = MCPServerSse(
+        {"url": "http://localhost:8000/mcp-test"},
+        client_session_timeout_seconds=20.0
+    )
+
     try:
-        client = AsyncAzureOpenAI(
-            api_version=api_version,
-            azure_endpoint=endpoint,
-            api_key=os.getenv("DH_API_KEY")
-        )
-        await tools_server.connect()
-        agent = Agent(
-            name="HR Assistant",
-            model=OpenAIChatCompletionsModel(
-                model=deployment,
-                client=client
-            ),
-            instructions="You are an HR assistant that analyzes resumes. You have a tool to parse resumes for details.",
-            mcp_servers=[tools_server]
+        async_client = AsyncAzureOpenAI(
+            api_version=API_VERSION,
+            azure_endpoint=AZURE_ENDPOINT,
+            api_key=AZURE_API_KEY
         )
 
-        input = "Anamika is currently working as a a Software Engineer in Maersk. Has around 6 year of experience overall. She has a degree of MTech in Software Engineering from BITS Pilani. She know java, SpringBoot. Her salary expectation of 25 lakh per annum but she is open for negotiation."
-        requirements = "We are looking for a Software engineer who has an industry experience of 5-6 years. Has experience working in a fast paced environment and is familiar with agile practices. Need to be proficient in languages such as Java. Discussions for salary is negotiable and can be discussed at the time of the interview."
-        candidate_summary = await extract_resume_details(input,agent)
-        if candidate_summary != None:
-            output = make_decision_to_hire(requirements,candidate_summary)
-            print("DECISION: ", output.hire)
-            print("REASON: ", output.reason)
+        await mcp_server.connect()
+
+        hr_agent = Agent(
+            name="Smart HR Agent",
+            model=OpenAIChatCompletionsModel(
+                model=DEPLOYMENT_NAME,
+                client=async_client
+            ),
+            instructions="You are a virtual HR agent responsible for interpreting resume content and extracting key hiring details.",
+            mcp_servers=[mcp_server]
+        )
+
+        raw_resume_text = (
+            "Anamika is currently working as a Software Engineer at Maersk. "
+            "She has around 6 years of experience. Holds an MTech in Software Engineering from BITS Pilani. "
+            "Proficient in Java and SpringBoot. Her salary expectation is 25 LPA, but she is open to negotiation."
+        )
+
+        job_requirements = (
+            "Seeking a Software Engineer with 5-6 years of professional experience. "
+            "Candidate should be familiar with agile methodologies and fast-paced environments. "
+            "Must have strong Java skills. Salary is negotiable and to be discussed during interviews."
+        )
+
+        structured_candidate = await parse_resume(raw_resume_text, hr_agent)
+        if structured_candidate:
+            decision = evaluate_candidate(job_requirements, structured_candidate)
+            print("HIRE DECISION:", decision.hire)
+            print("REASON:", decision.reason)
+
     finally:
-        await tools_server.cleanup()
+        await mcp_server.cleanup()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
-
+    asyncio.run(run_hiring_assistant())

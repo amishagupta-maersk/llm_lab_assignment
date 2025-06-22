@@ -1,15 +1,17 @@
-from src.pkg.mcp_resume_check import app
-from fastapi_mcp import FastApiMCP
-import uvicorn
-from src.utils.logging import setup_logging
-from dotenv import load_dotenv
 import os
 
+from dotenv import load_dotenv
+import uvicorn
+from fastapi_mcp import FastApiMCP
+from mcpAgents.McpResumeChecker import app
+
+# Load environment variables
 load_dotenv()
-setup_logging(output_dir=os.getenv("BASE_DIR_PATH"))
 
-mcp = FastApiMCP(app, include_operations=["resume_check"])
-mcp.mount()
+# Initialize and mount FastAPI MCP server
+mcp_server = FastApiMCP(app, include_operations=["resume_check"])
+mcp_server.mount()
 
+# Start the FastAPI application using Uvicorn
 if __name__ == "__main__":
     uvicorn.run(app, host="localhost", port=8000)
