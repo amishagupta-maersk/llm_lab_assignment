@@ -1,0 +1,122 @@
+SELECT
+    s.seller_id
+FROM sellers s
+JOIN order_items oi ON s.seller_id = oi.seller_id
+JOIN orders o ON oi.order_id = o.order_id
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE c.customer_city = 'rio de janeiro'
+    AND o.order_status = 'delivered'
+GROUP BY s.seller_id
+ORDER BY COUNT(DISTINCT o.order_id) DESC
+LIMIT 1;
+
+Query Result:                            seller_id
+0  4a3ca9315b744ce9f8e9374361493884
+-----------------------------------------------------------------
+
+SELECT ROUND(AVG(orw.review_score), 2) AS score
+FROM products p
+JOIN order_items oi ON p.product_id = oi.product_id
+JOIN orders o ON oi.order_id = o.order_id
+JOIN order_reviews orw ON o.order_id = orw.order_id
+WHERE p.product_category_name = 'beleza_saude';
+
+Query Result:     score
+0   4.14
+-----------------------------------------------------------------
+
+SELECT COUNT(*) as count
+FROM (
+    SELECT s.seller_id
+    FROM sellers s
+    JOIN order_items oi ON s.seller_id = oi.seller_id
+    JOIN orders o ON oi.order_id = o.order_id
+    WHERE o.order_status = 'delivered'
+    GROUP BY s.seller_id
+    HAVING SUM(oi.price) > 100000
+) AS filtered_sellers;
+
+Query Result:     count
+0     17
+-----------------------------------------------------------------
+
+SELECT p.product_category_name
+FROM products p
+JOIN order_items oi ON p.product_id = oi.product_id
+JOIN orders o ON oi.order_id = o.order_id
+JOIN order_reviews orw ON o.order_id = orw.order_id
+GROUP BY p.product_category_name
+ORDER BY 100.0 * SUM(CASE WHEN orw.review_score = 5 THEN 1 ELSE 0 END) / COUNT(orw.review_id) DESC
+LIMIT 1;
+
+Query Result:             product_category_name
+0  fashion_roupa_infanto_juvenil
+-----------------------------------------------------------------
+
+SELECT op.payment_installments
+FROM orders o
+JOIN order_payments op ON o.order_id = op.order_id
+WHERE op.payment_value > 1000
+GROUP BY op.payment_installments
+ORDER BY COUNT(op.payment_installments) DESC
+LIMIT 1;
+
+Query Result:     payment_installments
+0                    10
+-----------------------------------------------------------------
+
+SELECT c.customer_city AS city_name
+FROM customers c
+JOIN orders o ON c.customer_id = o.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+GROUP BY c.customer_city
+ORDER BY AVG(oi.freight_value) DESC
+LIMIT 1;
+
+Query Result:      city_name
+0  itupiranga
+-----------------------------------------------------------------
+
+SELECT p.product_category_name
+FROM products p
+JOIN order_items oi ON p.product_id = oi.product_id
+GROUP BY p.product_category_name
+ORDER BY AVG(oi.price) DESC
+LIMIT 1;
+
+Query Result:    product_category_name
+0                   pcs
+-----------------------------------------------------------------
+
+SELECT p.product_category_name
+FROM products p
+JOIN order_items oi ON p.product_id = oi.product_id
+JOIN orders o ON oi.order_id = o.order_id
+WHERE o.order_delivered_customer_date IS NOT NULL AND o.order_purchase_timestamp IS NOT NULL
+GROUP BY p.product_category_name
+ORDER BY AVG(JULIANDAY(o.order_delivered_customer_date) - JULIANDAY(o.order_purchase_timestamp)) ASC
+LIMIT 1;
+
+Query Result:    product_category_name
+0    artes_e_artesanato
+-----------------------------------------------------------------
+
+SELECT COUNT(*) AS count
+FROM (
+    SELECT oi.order_id
+    FROM order_items oi
+    GROUP BY oi.order_id
+    HAVING COUNT(DISTINCT oi.seller_id) > 1
+) AS multiple_seller_orders;
+
+Query Result:     count
+0   1278
+-----------------------------------------------------------------
+
+SELECT ROUND(100.0 * COUNT(CASE WHEN o.order_delivered_customer_date < o.order_estimated_delivery_date THEN 1 ELSE NULL END) / COUNT(o.order_id), 2) AS percentage
+FROM orders o
+WHERE o.order_delivered_customer_date IS NOT NULL AND o.order_estimated_delivery_date IS NOT NULL;
+
+Query Result:     percentage
+0       91.89
+-----------------------------------------------------------------

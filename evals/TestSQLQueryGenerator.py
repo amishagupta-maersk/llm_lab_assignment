@@ -1,7 +1,7 @@
 import unittest
 import sqlite3
 import re  # Import the regex module
-from chatwithLLMWithOlist.SQLQueryGeneratorWithJsonSchema import SQLQueryGeneratorWithJsonSchema
+from structuredOutput.SQLQueryGeneratorWithJsonSchema import SQLQueryGeneratorWithJsonSchema
 
 
 class TestSQLQueryGenerator(unittest.TestCase):
@@ -10,7 +10,7 @@ class TestSQLQueryGenerator(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up the SQLite database connection before running tests."""
-        cls.db_path = "../olist.sqlite"  # Path to the SQLite database file
+        cls.db_path = "../entryAssignment/olist.sqlite"  # Path to the SQLite database file
         cls.connection = sqlite3.connect(cls.db_path)
         cls.cursor = cls.connection.cursor()
         cls.sql_generator = SQLQueryGeneratorWithJsonSchema()

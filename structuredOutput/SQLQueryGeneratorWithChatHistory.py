@@ -5,7 +5,7 @@ import os
 import json
 import time  # For introducing small delays if needed
 
-from chatwithLLMWithOlist.olist_dataset import OlistDatasetInfo
+from structuredOutput.olist_dataset import OlistDatasetInfo
 
 # Load environment variables
 dotenv.load_dotenv()

@@ -1,4 +1,4 @@
-from chatwithLLMWithOlist.SQLQueryGeneratorWithJsonSchema import SQLQueryGeneratorWithJsonSchema
+from structuredOutput.SQLQueryGeneratorWithJsonSchema import SQLQueryGeneratorWithJsonSchema
 
 
 class SQLQueryExecutor:
