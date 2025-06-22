@@ -1,22 +1,26 @@
 import os
 import asyncio
-from openai import AsyncAzureOpenAI
+from openai import AsyncAzureOpenAI, AzureOpenAI
 from agents import Agent,Runner,OpenAIChatCompletionsModel
 from agents.mcp import MCPServerSse
 from dotenv import load_dotenv
-from src.utils.azure_client import azure_openai_model,client
-from src.pkg.mcp_resume_check import ResumeChecklist
-from src.utils.logging import setup_logging
 from pydantic import BaseModel,Field
 from typing import Optional
+from unstructuredChecklist.ResumeChecklist import ResumeChecklist
+
 load_dotenv()
-setup_logging(output_dir=os.getenv("BASE_DIR_PATH"),filename="agent.log")
 
 # Configuration
 endpoint = os.getenv("DH_ENDPOINT")
 model_name = "gpt-4o"
 deployment = "gpt-4o"
 api_version = "2024-12-01-preview"
+
+client = AzureOpenAI(
+    api_version=api_version,
+    azure_endpoint=endpoint,
+    api_key=os.getenv("DH_API_KEY")
+)
 
 class DecisionResponse(BaseModel):
     hire: str = Field(...,description="Answer in Yes for hiring or No for not hiring")
@@ -29,8 +33,8 @@ def make_decision_to_hire(requirements:str,candidate:ResumeChecklist):
         Do not hallucinate the skills of the candidate or any other information of the candidate.(Especially when some inputs are missing!)
         Give concise and remain clear on the intent while giving the decision for hire.
     """
-    response = client.beta.chat.completions.parse(
-        model=azure_openai_model,
+    response =client.chat.completions.create(
+        model=deployment,
         messages=[
             {"role":"system","content":system_prompt},
             {"role":"user","content":f"Make a hiring decision for the following candidate\n ### Job Requirements: {requirements}\n ### Candidate Data: {candidate}"}
@@ -63,7 +67,7 @@ async def main():
         agent = Agent(
             name="HR Assistant",
             model=OpenAIChatCompletionsModel(
-                model=azure_openai_model,
+                model=deployment,
                 client=client
             ),
             instructions="You are an HR assistant that analyzes resumes. You have a tool to parse resumes for details.",
